@@ -5,6 +5,16 @@ import { useParams } from "react-router-dom";
 import { getEventById } from "../services/eventService";
 import type { EventItem } from "../services/eventService";
 import { uploadPhoto, registerPhoto } from "../services/photoService";
+import logo from "../assets/logo.png";
+
+const MAX_PHOTOS_PER_UPLOAD = 10;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
 
 function UploadPage() {
   const { eventId } = useParams();
@@ -110,30 +120,40 @@ function UploadPage() {
   }, [files]);
 
   function handleFileChange(
-    event: ChangeEvent<HTMLInputElement>
-  ) {
-    const selectedFiles = Array.from(event.target.files ?? []);
+  event: ChangeEvent<HTMLInputElement>
+) {
+  const selectedFiles = Array.from(event.target.files ?? []);
 
-    const validFiles = selectedFiles.filter((file) => {
-      const allowedTypes = [
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-      ];
+  const remainingSlots = MAX_PHOTOS_PER_UPLOAD - files.length;
 
-      return (
-        allowedTypes.includes(file.type) &&
-        file.size <= 10 * 1024 * 1024
-      );
-    });
+  const validFiles = selectedFiles.filter((file) => {
+    return (
+      ALLOWED_TYPES.includes(file.type) &&
+      file.size <= MAX_FILE_SIZE
+    );
+  });
 
-    setFiles((previousFiles) => [
-      ...previousFiles,
-      ...validFiles,
-    ]);
+  const acceptedFiles = validFiles.slice(0, remainingSlots);
 
-    event.target.value = "";
+  setFiles((previousFiles) => [
+    ...previousFiles,
+    ...acceptedFiles,
+  ]);
+
+  if (validFiles.length < selectedFiles.length) {
+    setUploadError(
+      "Algumas imagens foram ignoradas. Verifique o formato e o limite de 10 MB."
+    );
+  } else if (validFiles.length > remainingSlots) {
+    setUploadError(
+      `Limite de ${MAX_PHOTOS_PER_UPLOAD} fotos por envio.`
+    );
+  } else {
+    setUploadError("");
   }
+
+  event.target.value = "";
+}
 
   function removeFile(index: number) {
     setFiles((previousFiles) =>
@@ -154,92 +174,305 @@ function UploadPage() {
     );
   }
 
-  return (
-    <main>
-      <h1>{event.name}</h1>
 
-      <p>{event.description}</p>
+return (
+  <main style={{
+    minHeight: "100vh",
+    backgroundColor: "#ffffff",
+    color: "#243B53",
+    fontFamily: "Arial, sans-serif",
+    padding: "20px",
+    boxSizing: "border-box",
+  }}>
+    <div style={{
+      maxWidth: "700px",
+      margin: "0 auto",
+    }}>
 
-      <h2>Compartilhe suas fotos!</h2>
+      {/* Cabeçalho */}
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+        padding: "12px 0 24px",
+        borderBottom: "1px solid #e5e7eb",
+      }}>
+        <img
+          src={logo}
+          alt="Logo do Colégio Rainha da Paz"
+          style={{
+            width: "75px",
+            height: "75px",
+            objectFit: "contain",
+          }}
+        />
 
-      <p>
-        Selecione as fotos que deseja compartilhar neste evento.
-      </p>
+        <div>
+          <h2 style={{
+            margin: 0,
+            fontSize: "18px",
+            color: "#243B53",
+          }}>
+            COLÉGIO RAINHA DA PAZ
+          </h2>
 
-      <label htmlFor="photo-input">
-        Escolher fotos
-      </label>
+          <p style={{
+            margin: "5px 0 0",
+            color: "#243B53",
+            fontSize: "14px",
+          }}>
+            Compartilhamento de fotos
+          </p>
+        </div>
+      </header>
 
-      <input
-        id="photo-input"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        multiple
-        onChange={handleFileChange}
-      />
+      {/* Apresentação */}
+      <section style={{
+        textAlign: "center",
+        padding: "40px 10px 30px",
+      }}>
+        <h1 style={{
+          fontSize: "28px",
+          lineHeight: 1.3,
+          margin: "0 0 12px",
+          color: "#243B53",
+        }}>
+          Momentos especiais merecem ser compartilhados!
+        </h1>
 
-      <section>
-        <h2>Fotos selecionadas ({files.length})</h2>
-
-        {files.map((file, index) => (
-          <div key={`${file.name}-${index}`}>
-            <img
-              src={previews[index]}
-              alt={`Prévia da foto ${index + 1}`}
-              width={150}
-            />
-
-            <p>{file.name}</p>
-
-            <button
-              type="button"
-              onClick={() => removeFile(index)}
-            >
-              Remover
-            </button>
-          </div>
-        ))}
+        <p style={{
+          color: "#243B53",
+          fontSize: "16px",
+          lineHeight: 1.6,
+          margin: 0,
+        }}>
+          Envie suas fotos e faça parte das lembranças deste evento.
+        </p>
       </section>
 
-      <div>
-        <label htmlFor="caption">
+      {/* Seleção de fotos */}
+      <section style={{
+        border: "2px dashed #cbd5e1",
+        borderRadius: "16px",
+        padding: "30px 20px",
+        textAlign: "center",
+        backgroundColor: "#f8fafc",
+      }}>
+        <div style={{ fontSize: "42px", marginBottom: "12px" }}>
+          📸
+        </div>
+
+        <h2 style={{ margin: "0 0 8px", fontSize: "21px", color: "#243B53",}}>
+          Adicione suas fotos
+        </h2>
+
+        <p style={{
+          color: "#64748b",
+          margin: "0 0 20px",
+        }}>
+          Selecione imagens da galeria do seu celular.
+        </p>
+
+        <label
+          htmlFor="photo-input"
+          style={{
+            display: "inline-block",
+            backgroundColor: "#243B53",
+            color: "#ffffff",
+            padding: "13px 25px",
+            borderRadius: "9px",
+            cursor: uploading || files.length >= 10
+              ? "not-allowed"
+              : "pointer",
+            opacity: uploading || files.length >= 10 ? 0.5 : 1,
+            fontWeight: "bold",
+          }}
+        >
+          Escolher fotos
+        </label>
+
+        <p style={{
+          color: "#64748b",
+          fontSize: "12px",
+          marginTop: "15px",
+        }}>
+          Até 10 fotos por envio · JPEG, PNG ou WEBP
+        </p>
+
+        <input
+          id="photo-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          disabled={uploading || files.length >= 10}
+          onChange={handleFileChange}
+          style={{ display: "none" }}
+        />
+      </section>
+
+      {/* Fotos selecionadas */}
+      {files.length > 0 && (
+        <section style={{ marginTop: "30px" }}>
+          <h2>Fotos selecionadas ({files.length}/10)</h2>
+
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+            gap: "15px",
+          }}>
+            {files.map((file, index) => (
+              <div
+                key={`${file.name}-${index}`}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "12px",
+                  padding: "8px",
+                  overflow: "hidden",
+                }}
+              >
+                <img
+                  src={previews[index]}
+                  alt={`Prévia da foto ${index + 1}`}
+                  style={{
+                    width: "100%",
+                    height: "120px",
+                    objectFit: "cover",
+                    borderRadius: "8px",
+                  }}
+                />
+
+                <p style={{
+                  fontSize: "12px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}>
+                  {file.name}
+                </p>
+
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => removeFile(index)}
+                  style={{
+                    border: "none",
+                    background: "#fee2e2",
+                    color: "#b91c1c",
+                    padding: "8px",
+                    borderRadius: "6px",
+                    width: "100%",
+                    cursor: "pointer",
+                  }}
+                >
+                  Remover
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Legenda */}
+      <section style={{ marginTop: "25px" }}>
+        <label htmlFor="caption" style={{
+          display: "block",
+          fontWeight: "bold",
+          marginBottom: "8px",
+        }}>
           Legenda (opcional)
         </label>
 
         <textarea
           id="caption"
           value={caption}
+          disabled={uploading}
           onChange={(event) =>
             setCaption(event.target.value.slice(0, 200))
           }
           maxLength={200}
           placeholder="Escreva uma mensagem..."
+          style={{
+            width: "100%",
+            minHeight: "100px",
+            padding: "12px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "9px",
+            resize: "vertical",
+            boxSizing: "border-box",
+            fontFamily: "inherit",
+            fontSize: "15px",
+          }}
         />
 
-        <p>{caption.length}/200 caracteres</p>
-      </div>
+        <p style={{
+          textAlign: "right",
+          fontSize: "12px",
+          color: "#64748b",
+        }}>
+          {caption.length}/200 caracteres
+        </p>
+      </section>
 
+      {/* Envio */}
       <button
-  type="button"
-  onClick={handleUpload}
-  disabled={files.length === 0 || uploading}
->
-  {uploading ? "Enviando fotos..." : "Enviar fotos"}
-</button>
+        type="button"
+        onClick={handleUpload}
+        disabled={files.length === 0 || uploading}
+        style={{
+          width: "100%",
+          padding: "16px",
+          border: "none",
+          borderRadius: "10px",
+          backgroundColor: "#243B53",
+          color: "#ffffff",
+          fontSize: "16px",
+          fontWeight: "bold",
+          cursor: files.length === 0 || uploading
+            ? "not-allowed"
+            : "pointer",
+          opacity: files.length === 0 || uploading ? 0.5 : 1,
+        }}
+      >
+        {uploading ? "Enviando fotos..." : "Enviar fotos"}
+      </button>
 
-{successMessage && (
-  <p style={{ color: "green" }}>
-    {successMessage}
-  </p>
-)}
+      {successMessage && (
+        <p style={{
+          color: "#15803d",
+          backgroundColor: "#dcfce7",
+          padding: "14px",
+          borderRadius: "8px",
+          textAlign: "center",
+        }}>
+          {successMessage}
+        </p>
+      )}
 
-{uploadError && (
-  <p style={{ color: "red" }}>
-    {uploadError}
-  </p>
-)}
-    </main>
-  );
+      {uploadError && (
+        <p style={{
+          color: "#b91c1c",
+          backgroundColor: "#fee2e2",
+          padding: "14px",
+          borderRadius: "8px",
+        }}>
+          {uploadError}
+        </p>
+      )}
+
+      {/* Rodapé */}
+      <footer style={{
+        textAlign: "center",
+        color: "#94a3b8",
+        fontSize: "12px",
+        padding: "35px 0 15px",
+      }}>
+        Colégio Rainha da Paz · Compartilhe bons momentos
+      </footer>
+
+    </div>
+  </main>
+);
+
 }
 
 export default UploadPage;

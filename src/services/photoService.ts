@@ -24,6 +24,98 @@ const ALLOWED_TYPES = [
   "image/webp",
 ];
 
+
+async function compressImage(file: File): Promise<File> {
+  const TARGET_SIZE = 1 * 1024 * 1024; // 1 MB
+
+  // Não altera imagens que já estão abaixo de 1 MB.
+  if (file.size <= TARGET_SIZE) {
+    return file;
+  }
+
+  const bitmap = await createImageBitmap(file);
+
+  try {
+    const dimensions = [1920, 1600, 1400];
+    const qualities = [0.82, 0.72, 0.62, 0.52];
+
+    let bestBlob: Blob | null = null;
+
+    for (const maxDimension of dimensions) {
+      const scale = Math.min(
+        1,
+        maxDimension / Math.max(bitmap.width, bitmap.height)
+      );
+
+      const width = Math.round(bitmap.width * scale);
+      const height = Math.round(bitmap.height * scale);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error("Não foi possível processar a imagem.");
+      }
+
+      // Fundo branco para preservar corretamente imagens com transparência.
+      context.fillStyle = "#FFFFFF";
+      context.fillRect(0, 0, width, height);
+
+      context.drawImage(bitmap, 0, 0, width, height);
+
+      for (const quality of qualities) {
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (result) => {
+              if (result) {
+                resolve(result);
+              } else {
+                reject(new Error("Erro ao comprimir a imagem."));
+              }
+            },
+            "image/jpeg",
+            quality
+          );
+        });
+
+        if (!bestBlob || blob.size < bestBlob.size) {
+          bestBlob = blob;
+        }
+
+        if (blob.size <= TARGET_SIZE) {
+          return new File(
+            [blob],
+            file.name.replace(/\.[^.]+$/, "") + ".jpg",
+            {
+              type: "image/jpeg",
+              lastModified: Date.now(),
+            }
+          );
+        }
+      }
+    }
+
+    if (!bestBlob) {
+      throw new Error("Não foi possível comprimir a imagem.");
+    }
+
+    return new File(
+      [bestBlob],
+      file.name.replace(/\.[^.]+$/, "") + ".jpg",
+      {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      }
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
+
 export async function uploadPhoto(
   eventId: string,
   file: File
@@ -40,14 +132,20 @@ export async function uploadPhoto(
     throw new Error("A imagem deve ter no máximo 10 MB.");
   }
 
-  const extension = file.type.split("/")[1];
+  // Comprime a imagem antes do envio.
+  const optimizedFile = await compressImage(file);
+
+  const extension = optimizedFile.type === "image/jpeg"
+    ? "jpg"
+    : optimizedFile.type.split("/")[1];
+
   const fileName = `${crypto.randomUUID()}.${extension}`;
   const filePath = `${eventId}/${fileName}`;
 
   const { error } = await supabase.storage
     .from(BUCKET_NAME)
-    .upload(filePath, file, {
-      contentType: file.type,
+    .upload(filePath, optimizedFile, {
+      contentType: optimizedFile.type,
       upsert: false,
     });
 
@@ -56,8 +154,17 @@ export async function uploadPhoto(
     throw error;
   }
 
+  console.log(
+    `Imagem original: ${(file.size / 1024 / 1024).toFixed(2)} MB`
+  );
+
+  console.log(
+    `Imagem após compressão: ${(optimizedFile.size / 1024 / 1024).toFixed(2)} MB`
+  );
+
   return filePath;
 }
+
 
 
 export async function registerPhoto(
