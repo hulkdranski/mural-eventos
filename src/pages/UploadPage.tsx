@@ -237,7 +237,7 @@ return (
           margin: "0 0 12px",
           color: "#243B53",
         }}>
-          Momentos especiais merecem ser compartilhados!
+          Oficina Vestindo Histórias
         </h1>
 
         <p style={{
