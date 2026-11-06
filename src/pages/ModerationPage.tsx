@@ -1,15 +1,20 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getPendingPhotos } from "../services/photoService";
+
+import {
+  getPendingPhotos,
+  updatePhotoStatus,
+  getPhotoUrl,
+} from "../services/photoService";
+
 import { getEventById } from "../services/eventService";
 
 import type { Photo } from "../types/Photo";
 import type { EventItem } from "../services/eventService";
-import { updatePhotoStatus, getPhotoUrl } from "../services/photoService";
 
 function ModerationPage() {
-  const { eventId } = useParams();
+  const { eventId } = useParams<{ eventId: string }>();
 
   const [event, setEvent] = useState<EventItem | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -17,29 +22,19 @@ function ModerationPage() {
   const [error, setError] = useState("");
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
 
-          async function handleModeration(
-          photoId: string,
-            status: "approved" | "rejected"
-        ) {
-  try {
-    await updatePhotoStatus(photoId, status);
-    await loadData();
-  } catch (error) {
-    console.error("Erro ao moderar foto:", error);
-    setError("Não foi possível atualizar a foto.");
-  }
-}
-  
-  async function loadData() {
+  const photoUrlsRef = useRef<Record<string, string>>({});
+  const loadingDataRef = useRef(false);
 
-    if (!eventId) {
-      setError("Identificador do evento inválido.");
-      setLoading(false);
+  async function loadData(silent = false) {
+    if (!eventId || loadingDataRef.current) {
       return;
     }
 
-    setLoading(true);
-    setError("");
+    loadingDataRef.current = true;
+
+    if (!silent) {
+      setLoading(true);
+    }
 
     try {
       const eventData = await getEventById(eventId);
@@ -52,35 +47,84 @@ function ModerationPage() {
       setEvent(eventData);
 
       const pendingPhotos = await getPendingPhotos(eventId);
-setPhotos(pendingPhotos);
 
-const urls = await Promise.all(
-  pendingPhotos.map(async (photo) => {
-    try {
-      const url = await getPhotoUrl(photo.id);
-      return [photo.id, url] as const;
-    } catch (error) {
-      console.error(
-        `Erro ao carregar imagem ${photo.id}:`,
-        error
+      setPhotos(pendingPhotos);
+
+      // Busca somente as imagens que ainda não possuem URL
+      const newPhotos = pendingPhotos.filter(
+        (photo) => !photoUrlsRef.current[photo.id]
       );
 
-      return [photo.id, ""] as const;
-    }
-  })
-);
+      const newUrls = await Promise.all(
+        newPhotos.map(async (photo) => {
+          try {
+            const url = await getPhotoUrl(photo.id);
+            return [photo.id, url] as const;
+          } catch (error) {
+            console.error(
+              `Erro ao carregar imagem ${photo.id}:`,
+              error
+            );
 
-setPhotoUrls(Object.fromEntries(urls));
+            return [photo.id, ""] as const;
+          }
+        })
+      );
+
+      const updatedUrls = {
+        ...photoUrlsRef.current,
+        ...Object.fromEntries(newUrls),
+      };
+
+      // Mantém somente as URLs das fotos ainda pendentes
+      const pendingIds = new Set(
+        pendingPhotos.map((photo) => photo.id)
+      );
+
+      const filteredUrls = Object.fromEntries(
+        Object.entries(updatedUrls).filter(([id]) =>
+          pendingIds.has(id)
+        )
+      );
+
+      photoUrlsRef.current = filteredUrls;
+      setPhotoUrls(filteredUrls);
+
+      setError("");
     } catch (err) {
       console.error("Erro ao carregar moderação:", err);
       setError("Não foi possível carregar as fotos pendentes.");
     } finally {
-      setLoading(false);
+      loadingDataRef.current = false;
+
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
+  async function handleModeration(
+    photoId: string,
+    status: "approved" | "rejected"
+  ) {
+    try {
+      await updatePhotoStatus(photoId, status);
+      await loadData(true);
+    } catch (error) {
+      console.error("Erro ao moderar foto:", error);
+      setError("Não foi possível atualizar a foto.");
+    }
+  }
+
+  // Atualização automática a cada 5 segundos
   useEffect(() => {
     loadData();
+
+    const interval = setInterval(() => {
+      loadData(true);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [eventId]);
 
   if (loading) {
@@ -92,7 +136,9 @@ setPhotoUrls(Object.fromEntries(urls));
       <main>
         <h1>Moderação</h1>
         <p>{error}</p>
-        <button onClick={loadData}>Tentar novamente</button>
+        <button onClick={() => loadData()}>
+          Tentar novamente
+        </button>
       </main>
     );
   }
@@ -107,73 +153,85 @@ setPhotoUrls(Object.fromEntries(urls));
         {photos.length} foto(s) aguardando aprovação.
       </p>
 
-      <button onClick={loadData}>
+      <p style={{ color: "#16a34a", fontSize: "14px" }}>
+        ● Atualização automática ativada (5 segundos)
+      </p>
+
+      <button onClick={() => loadData()}>
         Atualizar lista
       </button>
 
       {photos.length === 0 ? (
         <p>Nenhuma foto aguardando aprovação.</p>
       ) : (
-        
-<section>
-  {photos.map((photo) => (
-    <article
-      key={photo.id}
-      style={{
-        border: "1px solid #ccc",
-        padding: "16px",
-        marginTop: "12px",
-        borderRadius: "8px",
-      }}
-    >
-      <h3>Foto recebida</h3>
+        <section>
+          {photos.map((photo) => (
+            <article
+              key={photo.id}
+              style={{
+                border: "1px solid #ccc",
+                padding: "16px",
+                marginTop: "12px",
+                borderRadius: "8px",
+              }}
+            >
+              <h3>Foto recebida</h3>
 
-      {photoUrls[photo.id] ? (
-        <img
-          src={photoUrls[photo.id]}
-          alt={photo.caption || "Foto enviada para o evento"}
-          style={{
-            display: "block",
-            maxWidth: "100%",
-            maxHeight: "400px",
-            objectFit: "contain",
-            marginBottom: "12px",
-            borderRadius: "6px",
-          }}
-        />
-      ) : (
-        <p>Carregando imagem ou imagem indisponível.</p>
-      )}
+              {photoUrls[photo.id] ? (
+                <img
+                  src={photoUrls[photo.id]}
+                  alt={
+                    photo.caption ||
+                    "Foto enviada para o evento"
+                  }
+                  style={{
+                    display: "block",
+                    maxWidth: "100%",
+                    maxHeight: "400px",
+                    objectFit: "contain",
+                    marginBottom: "12px",
+                    borderRadius: "6px",
+                  }}
+                />
+              ) : (
+                <p>
+                  Carregando imagem ou imagem indisponível.
+                </p>
+              )}
 
-      <p>
-        <strong>Legenda:</strong> {photo.caption || "Sem legenda"}
-      </p>
+              <p>
+                <strong>Legenda:</strong>{" "}
+                {photo.caption || "Sem legenda"}
+              </p>
 
-      <p>
-        <strong>Arquivo:</strong> {photo.storagePath}
-      </p>
+              <p>
+                <strong>Arquivo:</strong> {photo.storagePath}
+              </p>
 
-      <p>
-        <strong>Status:</strong> {photo.status}
-      </p>
+              <p>
+                <strong>Status:</strong> {photo.status}
+              </p>
 
-      <div>
-        <button
-          onClick={() => handleModeration(photo.id, "approved")}
-        >
-          Aprovar
-        </button>
+              <div>
+                <button
+                  onClick={() =>
+                    handleModeration(photo.id, "approved")
+                  }
+                >
+                  Aprovar
+                </button>
 
-        <button
-          onClick={() => handleModeration(photo.id, "rejected")}
-        >
-          Rejeitar
-        </button>
-      </div>
-    </article>
-  ))}
-</section>
-
+                <button
+                  onClick={() =>
+                    handleModeration(photo.id, "rejected")
+                  }
+                >
+                  Rejeitar
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
       )}
     </main>
   );
